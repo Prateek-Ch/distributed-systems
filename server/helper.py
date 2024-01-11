@@ -1,7 +1,7 @@
 import nltk
 nltk.download('punkt')
 
-def task_distribution(paragraph, num_nodes):
+def create_segments(paragraph: str, num_nodes: int):
     sentences = nltk.sent_tokenize(paragraph)   
     
     segments = []
