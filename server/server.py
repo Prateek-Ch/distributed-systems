@@ -1,4 +1,4 @@
-import socket
+import socket, threading
 from helper import create_segments
 
 HOST = socket.gethostbyname(socket.gethostname())
@@ -18,10 +18,17 @@ def distribute_tasks(addresses, data):
     for segment, address in zip(segments, addresses):
         print(f"Sending message to {address}")
         server.sendto(segment.encode(FORMAT), address)
-        
+
+def handle_input():
+    while True:
+        if len(addresses) > 0:
+            data = input("Input Paragraph: ")
+            distribute_tasks(addresses, data) 
           
 def start():
     print(f"Server listening on {HOST}:{PORT}")
+    input_thread = threading.Thread(target=handle_input, daemon= True)
+    input_thread.start()
     while True:
         data, address = server.recvfrom(1024)
         message = data.decode(FORMAT)
@@ -29,8 +36,5 @@ def start():
         if message == AVAILABLE:
             addresses.append(address)
         server.sendto('Got your message'.encode(FORMAT), address) 
-        
-        data = input("Input Paragraph: ")
-        distribute_tasks(addresses, data)
 print("Server is starting...")
 start()
