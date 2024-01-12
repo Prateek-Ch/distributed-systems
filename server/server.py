@@ -36,7 +36,7 @@ def dynamic_host_discovery():
     while True:
         broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         print("sending broadcast message")
-        broadcast_socket.sendto(pickle.dumps(AVAILABLE), ('192.168.1.255', 37020))
+        broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT}), ('192.168.1.255', 37020))
         time.sleep(5)
             
           
@@ -56,7 +56,7 @@ def start():
         message = pickle.loads(data)
         print(f"Message from {address}: {message}")
         server.sendto(pickle.dumps(ACK), address)
-        if message == AVAILABLE:
+        if message == AVAILABLE and address not in addresses:
             addresses.append(address)
             print(f"adddreses list: {addresses}")
         elif type(message) == dict and 'ngram' in message.keys():

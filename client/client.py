@@ -2,8 +2,8 @@ import socket
 import pickle
 import threading
 
-HOST = '192.168.56.1'
-PORT = 9090
+host = ''
+port = 0
 AVAILABLE = 'available'
 ACK = 'ack'
 
@@ -12,6 +12,7 @@ server_available_event = threading.Event()
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 def dynamic_host_discovery():
+    global host, port
     print("waiting for server..")
     discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -21,9 +22,11 @@ def dynamic_host_discovery():
     while True:
         data, _ = discovery_socket.recvfrom(1024)
         message = pickle.loads(data)
-        if message == AVAILABLE:
-            print(f"Server available at {HOST}:{PORT}")
-            client.sendto(pickle.dumps(AVAILABLE), (HOST,PORT))
+        if 'HOST' and 'PORT' in message.keys():
+            print(f"Server available at {message['HOST']}:{message['PORT']}")
+            client.sendto(pickle.dumps(AVAILABLE), (message['HOST'], message['PORT']))
+            host = message['HOST']
+            port = message['PORT']
             server_available_event.set()
 
 discovery_thread = threading.Thread(target=dynamic_host_discovery, daemon=True)
@@ -40,4 +43,4 @@ while True:
         if sentence != ACK and sentence != AVAILABLE:
             words = sentence.split()
             result_dict = {'ngram': len(words)}
-            client.sendto(pickle.dumps(result_dict), (HOST, PORT))
+            client.sendto(pickle.dumps(result_dict), (host, port))
