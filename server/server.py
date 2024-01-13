@@ -6,6 +6,10 @@ PORT = 9090
 AVAILABLE = 'available'
 ACK = 'ack'
 
+HEARTBEAT_INTERVAL = 5 # seconds
+HEARTBEAT_TIMEOUT = 11  # seconds
+last_heartbeat = {}
+
 server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server.bind((HOST, PORT))
 
@@ -44,33 +48,48 @@ def calculate_result():
             segments_with_ids.clear()
             task_distributed = False
 
-def dynamic_host_discovery():
+def dynamic_host_discovery_and_heartbeats():
+    global task_distributed, addresses, last_heartbeat
     while True:
         broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        print("sending broadcast message")
-        broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT}), ('192.168.56.255', 37020))
-        time.sleep(5)
+        print("sending broadcast for heartbeat and dhd")
+        broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT}), ('192.168.1.255', 37020))
+        
+        # heartbeat
+        time.sleep(HEARTBEAT_INTERVAL)
+        current_time = time.time()
+        # Check for client heartbeats and redistribute tasks if a client is unresponsive
+        for address, last_time in last_heartbeat.items():
+            if current_time - last_time > HEARTBEAT_TIMEOUT:
+                print(f"Client at {address} is unresponsive.")
+                # remove from addresses list
+                addresses = [x for x in addresses if x != address]
+                print(f"addresses list: {addresses}")
+                task_distributed = False
+            print(f"adddreses list: {addresses}")       
             
           
 def start():
+    global last_heartbeat
     print(f"Server listening on {HOST}:{PORT}")
     # TODO: figure out if starting threads like this is safe and check for race conditions
     input_thread = threading.Thread(target=handle_input, daemon= True)
     results_thread = threading.Thread(target=calculate_result, daemon=True)
-    discovery_thread = threading.Thread(target=dynamic_host_discovery, daemon=True)
+    discovery_heartbeat_thread = threading.Thread(target=dynamic_host_discovery_and_heartbeats, daemon=True)
     
     input_thread.start()
     results_thread.start()
-    discovery_thread.start()
+    discovery_heartbeat_thread.start()
     
     while True:
         data, address = server.recvfrom(1024)
         message = pickle.loads(data)
         print(f"Message from {address}: {message}")
         server.sendto(pickle.dumps(ACK), address)
-        if message == AVAILABLE and address not in addresses:
-            addresses.append(address)
-            print(f"adddreses list: {addresses}")
+        if message == AVAILABLE:
+            if address not in addresses:
+                addresses.append(address)
+            last_heartbeat[address] = time.time()
         elif type(message) == dict and 'ngram' in message.keys():
             results.append({'id': message['id'], 'ngram': int(message['ngram'])}) 
 print("Server is starting...")
