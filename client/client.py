@@ -38,9 +38,9 @@ server_available_event.wait()
 while True:
     data, _ = client.recvfrom(4096)
     if data:
-        sentence = pickle.loads(data)
+        segment_with_id = pickle.loads(data)
         # TODO: replace with logic of ngram
-        if sentence != ACK and sentence != AVAILABLE:
-            words = sentence.split()
-            result_dict = {'ngram': len(words)}
+        if type(segment_with_id) == dict:
+            words = segment_with_id['data'].split()
+            result_dict = {'id': segment_with_id['id'], 'ngram': len(words)}
             client.sendto(pickle.dumps(result_dict), (host, port))
