@@ -1,6 +1,7 @@
 import socket
 import pickle
 import threading
+import time
 
 host = ''
 port = 0
@@ -36,11 +37,14 @@ discovery_thread.start()
 server_available_event.wait()
 
 while True:
+    time.sleep(6)
     data, _ = client.recvfrom(4096)
     if data:
         segment_with_id = pickle.loads(data)
         # TODO: replace with logic of ngram
         if type(segment_with_id) == dict:
+            print(segment_with_id['data'])
             words = segment_with_id['data'].split()
             result_dict = {'id': segment_with_id['id'], 'ngram': len(words)}
             client.sendto(pickle.dumps(result_dict), (host, port))
+            print(result_dict)
