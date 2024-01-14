@@ -105,15 +105,12 @@ def resend_segments():
         with task_distributed_lock:
             if task_distributed and not resend_queue.empty():
                 with resend_queue_lock:
-                    print("resend queue:", resend_queue.queue[0])
                     segment_with_id = resend_queue.get()
                     print(f"Resending segment to another available client: {segment_with_id}")
                     # make this address retrieval a bit better
                     address = addresses[0]
                     with id_to_address_lock:
                         id_to_address[segment_with_id['id']] = address
-                        print(addresses)
-                        print(id_to_address)
                         server.sendto(pickle.dumps(segment_with_id), address)     
                       
 def start():
@@ -138,7 +135,6 @@ def start():
         except ConnectionResetError:
             print("ConnectionResetError: Client forcefully closed the connection")
         message = pickle.loads(data)
-        # print(f"Message from {address}: {message}")
         server.sendto(pickle.dumps(ACK), address)
         if message == AVAILABLE:
             with addresses_lock:
@@ -150,6 +146,5 @@ def start():
             print(f"Message from {address}: {message}")
             with results_lock:   
                 results.append({'id': message['id'], 'ngram': int(message['ngram'])})
-                print("in start",results) 
 print("Server is starting...")
 start()
