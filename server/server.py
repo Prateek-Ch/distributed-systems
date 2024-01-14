@@ -5,6 +5,7 @@ HOST = socket.gethostbyname(socket.gethostname())
 PORT = 9090
 AVAILABLE = 'available'
 ACK = 'ack'
+RESULT_ACK = 'result_ack'
 
 HEARTBEAT_INTERVAL = 5 # seconds
 HEARTBEAT_TIMEOUT = 11  # seconds
@@ -146,5 +147,6 @@ def start():
             print(f"Message from {address}: {message}")
             with results_lock:   
                 results.append({'id': message['id'], 'ngram': int(message['ngram'])})
+                server.sendto(pickle.dumps(RESULT_ACK), address)
 print("Server is starting...")
 start()

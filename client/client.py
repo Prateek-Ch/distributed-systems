@@ -1,14 +1,15 @@
-import socket
-import pickle
-import threading
-import time
+import socket, pickle, threading, time, queue
 
 host = ''
 port = 0
 AVAILABLE = 'available'
 ACK = 'ack'
+RESULT_ACK = 'result_ack'
+send_queue = queue.Queue()
 
 server_available_event = threading.Event()
+
+send_queue_lock = threading.Lock()
 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -36,15 +37,30 @@ discovery_thread.start()
 # Wait for the server discovery before proceeding
 server_available_event.wait()
 
+def send_result_message():
+    while True:
+        time.sleep(10)
+        with send_queue_lock:
+            if not send_queue.empty():
+                result = send_queue.queue[0]
+                print(f"Sending {result} to {(host, port)}")
+                client.sendto(pickle.dumps(result), (host, port))
+            
+threading.Thread(target=send_result_message).start()
+
 while True:
-    time.sleep(6)
     data, _ = client.recvfrom(4096)
     if data:
-        segment_with_id = pickle.loads(data)
+        data_received = pickle.loads(data)
         # TODO: replace with logic of ngram
-        if type(segment_with_id) == dict:
-            print(segment_with_id['data'])
-            words = segment_with_id['data'].split()
-            result_dict = {'id': segment_with_id['id'], 'ngram': len(words)}
-            client.sendto(pickle.dumps(result_dict), (host, port))
-            print(result_dict)
+        if type(data_received) == dict:
+            words = data_received['data'].split()
+            result_dict = {'id': data_received['id'], 'ngram': len(words)}
+            with send_queue_lock:
+                print(f"Queueing: {result_dict}")
+                send_queue.put(result_dict)
+        # dequeue first element
+        if data_received == RESULT_ACK:
+            with send_queue_lock:
+                print(f"Dequeueing: {send_queue.queue[0]}")
+                send_queue.get()
