@@ -18,6 +18,7 @@ addresses = []
 segments_with_ids = []
 results = []
 task_distributed = False
+send_queue = queue.Queue()
 resend_queue = queue.Queue()
 id_to_address = {}
 
@@ -25,35 +26,43 @@ id_to_address = {}
 addresses_lock = threading.Lock()
 last_heartbeat_lock = threading.Lock()
 results_lock = threading.Lock()
+send_queue_lock = threading.Lock()
 resend_queue_lock = threading.Lock()
 task_distributed_lock = threading.Lock()
 id_to_address_lock = threading.Lock()
 
-def distribute_tasks(addresses, data):
+def distribute_tasks():
     global task_distributed
-    segments = create_segments(data, len(addresses))
-    for segment, address in zip(segments, addresses):
-        unique_id = str(uuid.uuid4())
-        segment_with_id = {'id': unique_id, 'data': segment}
-        print(f"Sending message to {address}")
-        # TODO: Implement try catch blocks after every server.send
-        server.sendto(pickle.dumps(segment_with_id), address)
-        segments_with_ids.append(segment_with_id)
-        id_to_address[unique_id] = address
-    task_distributed = True
+    while True:
+        time.sleep(25)
+        with send_queue_lock and resend_queue_lock:
+            if not send_queue.empty() and resend_queue.empty():
+                data = send_queue.queue[0]
+                segments = create_segments(data, len(addresses))
+                for segment, address in zip(segments, addresses):
+                    unique_id = str(uuid.uuid4())
+                    segment_with_id = {'id': unique_id, 'data': segment}
+                    print(f"Sending data to {address}")
+                    # TODO: Implement try catch blocks after every server.send
+                    server.sendto(pickle.dumps(segment_with_id), address)
+                    segments_with_ids.append(segment_with_id)
+                    id_to_address[unique_id] = address
+                    task_distributed = True
 
 def handle_input():
     global task_distributed
     while True:
-        with task_distributed_lock:
-            if len(addresses) > 0 and not task_distributed:
-                data = input("Input Paragraph: ")
-                distribute_tasks(addresses, data)
+        if len(addresses) > 0 and not task_distributed:
+            data = input("Input Paragraph ")
+            with send_queue_lock:
+                print(f"Queueing data")
+                send_queue.put(data)
             
 def calculate_result():
     # TODO: make this logic better
     global task_distributed
     while True:
+        time.sleep(2)
         ids_in_segments = set(d1['id'] for d1 in segments_with_ids)
         ids_in_results = set(d2['id'] for d2 in results)
         all_keys_match = ids_in_segments == ids_in_results
@@ -63,6 +72,9 @@ def calculate_result():
                 with results_lock:
                     result = sum(entry['ngram'] for entry in results)
                     print(f"Final result: {result}")
+                    with send_queue_lock:
+                        print(f"Dequeing results: {send_queue.queue[0]}")
+                        send_queue.get()
                     results.clear()
                     segments_with_ids.clear()
                     id_to_address.clear()
@@ -80,7 +92,7 @@ def calculate_result():
                                     
 
 def dynamic_host_discovery_and_heartbeats():
-    global task_distributed, addresses, last_heartbeat
+    global addresses, last_heartbeat
     while True:
         broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         print("sending broadcast for heartbeat and dhd")
@@ -102,17 +114,16 @@ def dynamic_host_discovery_and_heartbeats():
 def resend_segments():
     global task_distributed
     while True:
-        time.sleep(7)
-        with task_distributed_lock:
-            if task_distributed and not resend_queue.empty():
-                with resend_queue_lock:
-                    segment_with_id = resend_queue.get()
-                    print(f"Resending segment to another available client: {segment_with_id}")
-                    # make this address retrieval a bit better
-                    address = addresses[0]
-                    with id_to_address_lock:
-                        id_to_address[segment_with_id['id']] = address
-                        server.sendto(pickle.dumps(segment_with_id), address)     
+        time.sleep(6)
+        if task_distributed and not resend_queue.empty():
+            with resend_queue_lock:
+                segment_with_id = resend_queue.get()
+                print(f"Resending segment to another available client: {segment_with_id}")
+                # make this address retrieval a bit better
+                address = addresses[0]
+                with id_to_address_lock:
+                    id_to_address[segment_with_id['id']] = address
+                    server.sendto(pickle.dumps(segment_with_id), address)     
                       
 def start():
     global last_heartbeat
@@ -123,11 +134,13 @@ def start():
     results_thread = threading.Thread(target=calculate_result, daemon=True)
     discovery_heartbeat_thread = threading.Thread(target=dynamic_host_discovery_and_heartbeats, daemon=True)
     resend_thread = threading.Thread(target=resend_segments, daemon=True)
+    distribute_tasks_thread = threading.Thread(target=distribute_tasks, daemon=True)
     
+    discovery_heartbeat_thread.start()
     input_thread.start()
     results_thread.start()
-    discovery_heartbeat_thread.start()
     resend_thread.start()
+    distribute_tasks_thread.start()
     
     while True:
         try:
