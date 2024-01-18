@@ -5,16 +5,22 @@ port = 0
 AVAILABLE = 'available'
 ACK = 'ack'
 RESULT_ACK = 'result_ack'
+SERVER_HEARTBEAT_INTERVAL = 5 # seconds
+SERVER_HEARTBEAT_TIMEOUT = 11  # seconds
+last_heartbeat = {}
+
 send_queue = queue.Queue()
+client_addresses = []
 
 server_available_event = threading.Event()
 
 send_queue_lock = threading.Lock()
 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+client.setblocking(0)
 
 def dynamic_host_discovery():
-    global host, port
+    global host, port, client_addresses
     print("waiting for server..")
     discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -29,6 +35,8 @@ def dynamic_host_discovery():
             client.sendto(pickle.dumps(AVAILABLE), (message['HOST'], message['PORT']))
             host = message['HOST']
             port = message['PORT']
+            client_addresses = message['ADDRESSES']
+            last_heartbeat["server"] = time.time()
             server_available_event.set()
 
 discovery_thread = threading.Thread(target=dynamic_host_discovery, daemon=True)
@@ -49,7 +57,14 @@ def send_result_message():
 threading.Thread(target=send_result_message).start()
 
 while True:
-    data, _ = client.recvfrom(4096)
+    time.sleep(SERVER_HEARTBEAT_INTERVAL)
+    current_time = time.time()
+    if current_time - last_heartbeat["server"] > SERVER_HEARTBEAT_TIMEOUT:
+            print("Time to elect a new leader")
+    try:
+        data, _ = client.recvfrom(4096)
+    except BlockingIOError:
+        data = None
     if data:
         data_received = pickle.loads(data)
         # TODO: replace with logic of ngram
