@@ -1,4 +1,4 @@
-import socket, pickle, threading, time, queue, signal, sys
+import socket, pickle, threading, time, queue, signal, sys, os
 from bully import Node, LEADER_ID, LEADER_HOST, LEADER_PORT, elect_leader
 host = ''
 port = 0
@@ -127,8 +127,10 @@ def current_client_leader():
             print("Leader elected. Performing leader tasks...")
             print("-------RUNNING server.py HERE----------")
             # figure out a way to run server.py here
-            time.sleep(5)
-
+            server_dir = r"D:\University of Stuttgart\Sem 1\Distributed Systems\Project\distributed-systems\server\server.py" 
+            print(server_dir)
+            os.execv(sys.executable, ['python'] + ['"' + server_dir +'"'])
+            
 threading.Thread(target=current_client_leader, daemon=True).start()
 
 while True:

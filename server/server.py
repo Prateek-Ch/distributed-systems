@@ -193,11 +193,13 @@ def start():
             with results_lock:   
                 results.append({'id': message['id'], 'ngram': int(message['ngram'])})
                 server.sendto(pickle.dumps(RESULT_ACK), address)
-print("Server is starting...")
-start()
 
-# graceful shutdown
-if server:
-    server.close()
-print("graceful shutdown")
-sys.exit()
+if __name__ == "__main__":
+    print("Server is starting...")
+    start()
+
+    # graceful shutdown
+    if server:
+        server.close()
+    print("graceful shutdown")
+    sys.exit()
