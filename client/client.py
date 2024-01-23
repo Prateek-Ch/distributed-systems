@@ -1,5 +1,5 @@
 import socket, pickle, threading, time, queue
-from bully import Node, LEADER_ID, elect_leader
+from bully import Node, LEADER_ID, LEADER_HOST, LEADER_PORT, elect_leader
 host = ''
 port = 0
 AVAILABLE = 'available'
@@ -13,8 +13,7 @@ last_heartbeat = {}
 send_queue = queue.Queue()
 
 server_available_event = threading.Event()
-leader_required_event = threading.Event()
-leader_elected_event = threading.Event()
+currrent_client_leader_event = threading.Event()
 
 send_queue_lock = threading.Lock()
 client_addresses = []
@@ -22,7 +21,6 @@ nodes = []
 new_leader_id = None
 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-client.setblocking(0)
 
 def dynamic_host_discovery():
     global host, port, client_addresses, nodes
@@ -58,13 +56,15 @@ def listen_for_leader():
     election_socket.bind(("", 37021))
         
     while True:
-        time.sleep(5)
         data, addr = election_socket.recvfrom(4096)
         message = pickle.loads(data)
         if  LEADER_ID in message.keys():
             print(f"Client {message[LEADER_ID]} is elected as the leader.")
             new_leader_id = message[LEADER_ID]
-            leader_required_event.set()
+            _, current_sock_port = client.getsockname()
+            current_sock_host = socket.gethostbyname(socket.gethostname())
+            if current_sock_host == message[LEADER_HOST] and current_sock_port == message[LEADER_PORT]:
+                currrent_client_leader_event.set()
             break
 
 discovery_thread = threading.Thread(target=dynamic_host_discovery, daemon=True)
@@ -84,29 +84,37 @@ def send_result_message():
             
 threading.Thread(target=send_result_message).start()
 
-while True:
-    time.sleep(SERVER_HEARTBEAT_INTERVAL)
-    current_time = time.time()
-    if current_time - last_heartbeat["server"] > SERVER_HEARTBEAT_TIMEOUT:
-            print("Time to elect a new leader")
+# check server heartbeat
+def server_heartbeat():
+    while True:
+        time.sleep(SERVER_HEARTBEAT_INTERVAL)
+        current_time = time.time()
+        if current_time - last_heartbeat["server"] > SERVER_HEARTBEAT_TIMEOUT:
+            print("time to elect a new leader")
             elect_leader(nodes)
             threading.Thread(target=listen_for_leader, daemon=True).start()
-            leader_required_event.wait()
+            time.sleep(10)
+            
+threading.Thread(target=server_heartbeat, daemon=True).start()
+
+def current_client_leader():
+    while True:
+        if currrent_client_leader_event.is_set():
+            last_heartbeat["server"] = time.time()
+            print("Leader elected. Performing leader tasks...")
+            print("-------RUNNING server.py HERE----------")
+            # figure out a way to run server.py here
+            time.sleep(5)
+
+threading.Thread(target=current_client_leader, daemon=True).start()
+
+while True:
     try:
         data, _ = client.recvfrom(4096)
     except BlockingIOError:
         data = None
     if data != None:
         data_received = pickle.loads(data)
-
-        # if data_received == LEADER_ELECTED:
-        #     elected_leader_id = int(client.recvfrom(4096)[0])
-        #     if elected_leader_id == client_node_id:
-        #         print(f"I am elected as the leader! ID: {client_node_id}")
-        #         leader_elected_event.set()
-        #     else:
-        #         print(f"Client {elected_leader_id} is elected as the leader.")
-        #         leader_elected_event.clear()
 
         if type(data_received) == dict:
             words = data_received['data'].split()
@@ -119,8 +127,3 @@ while True:
             with send_queue_lock:
                 print(f"Dequeueing: {send_queue.queue[0]}")
                 send_queue.get()
-
-        if leader_elected_event.is_set():
-            print("Leader elected. Performing leader tasks...")
-            # figure out a way to run server.py here
-            time.sleep(5)

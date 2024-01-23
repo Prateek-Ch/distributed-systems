@@ -3,11 +3,16 @@ import pickle
 import threading
 
 LEADER_ID = 'leader_id'
+LEADER_HOST = 'leader_host'
+LEADER_PORT = 'leader_port'
 ELECTION_REQUEST = 'election_request'
 OK_MESSAGE = 'ok_message'
 
 class Node:
     leader_id = None
+    leader_host = None
+    leader_port = None
+    
     def __init__(self, node_id, host, port, client):
         self.node_id = node_id
         self.host = host
@@ -36,7 +41,9 @@ class Node:
         print(f"{self} receives an OK message from {responding_node}.")
         self.leader = responding_node
         print(f"{self} acknowledges {responding_node} as the leader.")
-        Node.leader_id = self.leader.node_id 
+        Node.leader_id = self.leader.node_id
+        Node.leader_host = self.leader.host
+        Node.leader_port = self.leader.port
 
             
             
@@ -52,4 +59,4 @@ def elect_leader(nodes: list):
         thread.join()
     
     broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    broadcast_socket.sendto(pickle.dumps({LEADER_ID: Node.leader_id}), ('192.168.1.255', 37021))
+    broadcast_socket.sendto(pickle.dumps({LEADER_ID: Node.leader_id, LEADER_HOST: Node.leader_host, LEADER_PORT: Node.leader_port}), ('192.168.56.255', 37021))

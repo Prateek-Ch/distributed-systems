@@ -97,7 +97,7 @@ def dynamic_host_discovery_and_heartbeats():
         broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         print("sending broadcast for heartbeat and dhd")
         with addresses_lock, last_heartbeat_lock:
-            broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT, 'ADDRESSES': addresses}), ('192.168.1.255', 37020))
+            broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT, 'ADDRESSES': addresses}), ('192.168.56.255', 37020))
             
             # heartbeat
             time.sleep(HEARTBEAT_INTERVAL)
