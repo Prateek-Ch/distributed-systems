@@ -1,4 +1,4 @@
-import socket, pickle, threading, time, queue
+import socket, pickle, threading, time, queue, signal, sys
 from bully import Node, LEADER_ID, LEADER_HOST, LEADER_PORT, elect_leader
 host = ''
 port = 0
@@ -14,6 +14,7 @@ send_queue = queue.Queue()
 
 server_available_event = threading.Event()
 currrent_client_leader_event = threading.Event()
+exit_flag_event = threading.Event()
 
 send_queue_lock = threading.Lock()
 client_addresses = []
@@ -21,6 +22,12 @@ nodes = []
 new_leader_id = None
 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+def signal_handler(sig, frame):
+    exit_flag_event.set()
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 def dynamic_host_discovery():
     global host, port, client_addresses, nodes
@@ -31,6 +38,11 @@ def dynamic_host_discovery():
     discovery_socket.bind(("", 37020))
 
     while True:
+        if exit_flag_event.is_set():
+            discovery_socket.close()
+            if client:
+                client.close()
+            break
         data, _ = discovery_socket.recvfrom(1024)
         message = pickle.loads(data)
         if 'HOST' and 'PORT' in message.keys():
@@ -56,6 +68,9 @@ def listen_for_leader():
     election_socket.bind(("", 37021))
         
     while True:
+        if exit_flag_event.is_set():
+            election_socket.close()
+            break
         data, addr = election_socket.recvfrom(4096)
         message = pickle.loads(data)
         if  LEADER_ID in message.keys():
@@ -75,6 +90,10 @@ server_available_event.wait()
 
 def send_result_message():
     while True:
+        if exit_flag_event.is_set():
+            if client:
+                client.close()
+            break
         time.sleep(10)
         with send_queue_lock:
             if not send_queue.empty():
@@ -87,6 +106,8 @@ threading.Thread(target=send_result_message).start()
 # check server heartbeat
 def server_heartbeat():
     while True:
+        if exit_flag_event.is_set():
+            break
         time.sleep(SERVER_HEARTBEAT_INTERVAL)
         current_time = time.time()
         if current_time - last_heartbeat["server"] > SERVER_HEARTBEAT_TIMEOUT:
@@ -99,6 +120,8 @@ threading.Thread(target=server_heartbeat, daemon=True).start()
 
 def current_client_leader():
     while True:
+        if exit_flag_event.is_set():
+            break
         if currrent_client_leader_event.is_set():
             last_heartbeat["server"] = time.time()
             print("Leader elected. Performing leader tasks...")
@@ -109,6 +132,8 @@ def current_client_leader():
 threading.Thread(target=current_client_leader, daemon=True).start()
 
 while True:
+    if exit_flag_event.is_set():
+        break
     try:
         data, _ = client.recvfrom(4096)
     except BlockingIOError:
@@ -127,3 +152,9 @@ while True:
             with send_queue_lock:
                 print(f"Dequeueing: {send_queue.queue[0]}")
                 send_queue.get()
+
+# graceful shutdown
+if client:
+    client.close()
+print("graceful shutdown")
+sys.exit()
