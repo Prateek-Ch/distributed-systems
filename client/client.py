@@ -126,10 +126,9 @@ def current_client_leader():
             last_heartbeat["server"] = time.time()
             print("Leader elected. Performing leader tasks...")
             print("-------RUNNING server.py HERE----------")
-            # figure out a way to run server.py here
-            server_dir = r"D:\University of Stuttgart\Sem 1\Distributed Systems\Project\distributed-systems\server\server.py" 
-            print(server_dir)
-            os.execv(sys.executable, ['python'] + ['"' + server_dir +'"'])
+            current_script_dir = os.path.dirname(os.path.abspath(__file__))
+            server_py = os.path.abspath(os.path.join(current_script_dir, '..', 'server/server.py')) 
+            os.execv(sys.executable, ['python'] + ['"' + server_py +'"'])
             
 threading.Thread(target=current_client_leader, daemon=True).start()
 
