@@ -13,7 +13,6 @@ last_heartbeat = {}
 send_queue = queue.Queue()
 
 server_available_event = threading.Event()
-currrent_client_leader_event = threading.Event()
 exit_flag_event = threading.Event()
 
 send_queue_lock = threading.Lock()
@@ -79,7 +78,12 @@ def listen_for_leader():
             _, current_sock_port = client.getsockname()
             current_sock_host = socket.gethostbyname(socket.gethostname())
             if current_sock_host == message[LEADER_HOST] and current_sock_port == message[LEADER_PORT]:
-                currrent_client_leader_event.set()
+                last_heartbeat["server"] = time.time()
+                print("Leader elected. Performing leader tasks...")
+                print("-------RUNNING server.py HERE----------")
+                current_script_dir = os.path.dirname(os.path.abspath(__file__))
+                server_py = os.path.abspath(os.path.join(current_script_dir, '..', 'server/server.py')) 
+                os.execv(sys.executable, ['python'] + ['"' + server_py +'"'])
             break
 
 discovery_thread = threading.Thread(target=dynamic_host_discovery, daemon=True)
@@ -117,20 +121,6 @@ def server_heartbeat():
             time.sleep(10)
             
 threading.Thread(target=server_heartbeat, daemon=True).start()
-
-def current_client_leader():
-    while True:
-        if exit_flag_event.is_set():
-            break
-        if currrent_client_leader_event.is_set():
-            last_heartbeat["server"] = time.time()
-            print("Leader elected. Performing leader tasks...")
-            print("-------RUNNING server.py HERE----------")
-            current_script_dir = os.path.dirname(os.path.abspath(__file__))
-            server_py = os.path.abspath(os.path.join(current_script_dir, '..', 'server/server.py')) 
-            os.execv(sys.executable, ['python'] + ['"' + server_py +'"'])
-            
-threading.Thread(target=current_client_leader, daemon=True).start()
 
 while True:
     if exit_flag_event.is_set():

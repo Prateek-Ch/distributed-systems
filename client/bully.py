@@ -49,14 +49,19 @@ class Node:
             
 def elect_leader(nodes: list):
     threads = []
-    for node in nodes:
-        thread = threading.Thread(target=node.start_election, args=(nodes,), daemon=True)
-        threads.append(thread)
-        thread.start()
+    if len(nodes) == 1:
+        Node.leader_id = nodes[0].node_id
+        Node.leader_host = nodes[0].host
+        Node.leader_port = nodes[0].port
+    else:
+        for node in nodes:
+            thread = threading.Thread(target=node.start_election, args=(nodes,), daemon=True)
+            threads.append(thread)
+            thread.start()
     
-     # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
     
     broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     broadcast_socket.sendto(pickle.dumps({LEADER_ID: Node.leader_id, LEADER_HOST: Node.leader_host, LEADER_PORT: Node.leader_port}), ('192.168.56.255', 37021))
