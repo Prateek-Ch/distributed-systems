@@ -1,5 +1,5 @@
 import socket, pickle, threading, time, queue, signal, sys, os
-from bully import Node, LEADER_ID, LEADER_HOST, LEADER_PORT, elect_leader
+from bully import Node, LEADER_ID, LEADER_HOST, LEADER_PORT, ELECTION_REQUEST, OK_MESSAGE, elect_leader
 host = ''
 port = 0
 AVAILABLE = 'available'
@@ -7,7 +7,7 @@ ACK = 'ack'
 RESULT_ACK = 'result_ack'
 LEADER_ELECTED = 'leader_elected'
 SERVER_HEARTBEAT_INTERVAL = 5 # seconds
-SERVER_HEARTBEAT_TIMEOUT = 11  # seconds
+SERVER_HEARTBEAT_TIMEOUT = 16  # seconds
 last_heartbeat = {}
 
 send_queue = queue.Queue()
@@ -18,7 +18,10 @@ exit_flag_event = threading.Event()
 send_queue_lock = threading.Lock()
 client_addresses = []
 nodes = []
-new_leader_id = None
+leader = None
+election_begin_time = None
+ok_count = 0
+address_mapping = {}
 
 client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -53,6 +56,7 @@ def dynamic_host_discovery():
             nodes = []
             for i in range(len(client_addresses)):
                 chost, cport = client_addresses[i]
+                address_mapping[(chost, cport)] = i
                 node = Node(i, chost, cport, client)
                 if node not in nodes:
                     nodes.append(node)
@@ -60,7 +64,6 @@ def dynamic_host_discovery():
             server_available_event.set()
 
 def listen_for_leader():
-    global new_leader_id
     election_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     election_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     election_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -74,10 +77,9 @@ def listen_for_leader():
         message = pickle.loads(data)
         if  LEADER_ID in message.keys():
             print(f"Client {message[LEADER_ID]} is elected as the leader.")
-            new_leader_id = message[LEADER_ID]
             _, current_sock_port = client.getsockname()
             current_sock_host = socket.gethostbyname(socket.gethostname())
-            if current_sock_host == message[LEADER_HOST] and current_sock_port == message[LEADER_PORT]:
+            if current_sock_host == message[LEADER_HOST] and current_sock_port == message[LEADER_PORT] and current_sock_host == message[LEADER_HOST]:
                 last_heartbeat["server"] = time.time()
                 print("Leader elected. Performing leader tasks...")
                 print("-------RUNNING server.py HERE----------")
@@ -107,8 +109,20 @@ def send_result_message():
             
 threading.Thread(target=send_result_message).start()
 
+def leader_elected():
+    while True:
+        election_elapsed_time = time.time() - election_begin_time
+        if leader is None and election_elapsed_time > 7 and ok_count == 0:
+            _, current_sock_port = client.getsockname()
+            current_sock_host = socket.gethostbyname(socket.gethostname())
+            leader_id = address_mapping[(current_sock_host, current_sock_port)]
+            broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            broadcast_socket.sendto(pickle.dumps({LEADER_ID: leader_id, LEADER_HOST: current_sock_host, LEADER_PORT: current_sock_port}), ('192.168.56.255', 37021))
+            break
+
 # check server heartbeat
 def server_heartbeat():
+    global leader, election_begin_time
     while True:
         if exit_flag_event.is_set():
             break
@@ -116,8 +130,11 @@ def server_heartbeat():
         current_time = time.time()
         if current_time - last_heartbeat["server"] > SERVER_HEARTBEAT_TIMEOUT:
             print("time to elect a new leader")
+            leader = None
             elect_leader(nodes)
+            election_begin_time = time.time()
             threading.Thread(target=listen_for_leader, daemon=True).start()
+            threading.Thread(target=leader_elected, daemon=True).start()
             time.sleep(10)
             
 threading.Thread(target=server_heartbeat, daemon=True).start()
@@ -131,8 +148,22 @@ while True:
         data = None
     if data != None:
         data_received = pickle.loads(data)
-
-        if type(data_received) == dict:
+        if type(data_received) == dict and ELECTION_REQUEST in data_received.keys():
+            print(f"{data_received['target_node'].node_id} receives an election message from {data_received['initiating_node'].node_id}.")
+            print(leader)
+            if leader is None or data_received['target_node'].node_id > leader.node_id:
+                print(f"{data_received['target_node'].node_id} sends an OK message to {data_received['initiating_node'].node_id}.")
+                message = {OK_MESSAGE: 'ok', 'responding_node': data_received['target_node'], 'initiating_node': data_received['initiating_node']}
+                client.sendto(pickle.dumps(message), (data_received['initiating_node'].host, data_received['initiating_node'].port))
+            else:
+                print(f"{data_received['target_node']} ignores the election message from {data_received['initiating_node']}.")
+        
+        if type(data_received) == dict and OK_MESSAGE in data_received.keys():
+            ok_count += 1
+            leader = data_received['responding_node']
+            print(f"{data_received['initiating_node'].node_id} acknowledges {data_received['responding_node'].node_id} as the leader.")    
+        
+        if type(data_received) == dict and 'data' in data_received.keys():
             words = data_received['data'].split()
             result_dict = {'id': data_received['id'], 'ngram': len(words)}
             with send_queue_lock:

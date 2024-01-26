@@ -19,31 +19,23 @@ class Node:
         self.port = port
         self.leader = None
         self.client = client
-    
-    def __str__(self):
-        return f"Node {self.node_id}"
 
     def start_election(self, nodes):
-        print(f"{self} initiates an election.")
+        print(f"{self.node_id} initiates an election.")
         higher_nodes = [node for node in nodes if node.node_id > self.node_id]
         for higher_node in higher_nodes:
-            higher_node.receive_election(self)
+            election_message = {ELECTION_REQUEST: True, 'initiating_node': self, 'target_node': higher_node}
+            self.send_message(higher_node, election_message)
 
-    def receive_election(self, initiating_node):
-        print(f"{self} receives an election message from {initiating_node}.")
-        if self.leader is None or self.node_id > self.leader.node_id:
-            print(f"{self} sends an OK message to {initiating_node}.")
-            initiating_node.receive_ok(self)
-        else:
-            print(f"{self} ignores the election message from {initiating_node}.")
-
-    def receive_ok(self, responding_node):
-        print(f"{self} receives an OK message from {responding_node}.")
-        self.leader = responding_node
-        print(f"{self} acknowledges {responding_node} as the leader.")
-        Node.leader_id = self.leader.node_id
-        Node.leader_host = self.leader.host
-        Node.leader_port = self.leader.port
+    def send_message(self, target_node, message):
+        print(f"{self.node_id} sends message to Node {target_node.node_id}.")
+        try:
+            client = message['initiating_node'].client
+            message['initiating_node'].client = None
+            message['target_node'].client = None
+            client.sendto(pickle.dumps(message), (target_node.host, target_node.port))
+        except socket.error as e:
+            print(f"Error sending message to ({target_node.host}:{target_node.port}): {e}")
 
             
             
@@ -62,6 +54,3 @@ def elect_leader(nodes: list):
         # Wait for all threads to finish
         for thread in threads:
             thread.join()
-    
-    broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    broadcast_socket.sendto(pickle.dumps({LEADER_ID: Node.leader_id, LEADER_HOST: Node.leader_host, LEADER_PORT: Node.leader_port}), ('192.168.56.255', 37021))
