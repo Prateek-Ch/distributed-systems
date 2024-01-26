@@ -26,30 +26,11 @@ class Node:
             election_message = {ELECTION_REQUEST: True, 'initiating_node': self, 'target_node': higher_node}
             self.send_message(higher_node, election_message)
 
-    def send_message(self, target_node, message):
+    def send_message(self, higher_node, message):
         try:
-            client = message['initiating_node'].client
             message['initiating_node'].client = None
             message['target_node'].client = None
-            if client:
-                client.sendto(pickle.dumps(message), (target_node.host, target_node.port))
+            if self.client:
+                self.client.sendto(pickle.dumps(message), (higher_node.host, higher_node.port))
         except socket.error as e:
-            print(f"Error sending message to ({target_node.host}:{target_node.port}): {e}")
-
-            
-            
-def elect_leader(nodes: list):
-    threads = []
-    if len(nodes) == 1:
-        Node.leader_id = nodes[0].node_id
-        Node.leader_host = nodes[0].host
-        Node.leader_port = nodes[0].port
-    else:
-        for node in nodes:
-            thread = threading.Thread(target=node.start_election, args=(nodes,), daemon=True)
-            threads.append(thread)
-            thread.start()
-    
-        # Wait for all threads to finish
-        for thread in threads:
-            thread.join()
+            print(f"Error sending message to ({higher_node.host}:{higher_node.port}): {e}")

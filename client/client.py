@@ -1,5 +1,5 @@
 import socket, pickle, threading, time, queue, signal, sys, os
-from bully import Node, LEADER_ID, LEADER_HOST, LEADER_PORT, ELECTION_REQUEST, OK_MESSAGE, elect_leader
+from bully import Node, LEADER_ID, LEADER_HOST, LEADER_PORT, ELECTION_REQUEST, OK_MESSAGE
 host = ''
 port = 0
 AVAILABLE = 'available'
@@ -122,7 +122,7 @@ def leader_elected():
 
 # check server heartbeat
 def server_heartbeat():
-    global leader, election_begin_time
+    global leader, election_begin_time, ok_count
     while True:
         if exit_flag_event.is_set():
             break
@@ -131,7 +131,16 @@ def server_heartbeat():
         if current_time - last_heartbeat["server"] > SERVER_HEARTBEAT_TIMEOUT:
             print("time to elect a new leader")
             leader = None
-            elect_leader(nodes)
+            ok_count = 0
+            if len(nodes) == 1:
+                broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                broadcast_socket.sendto(pickle.dumps({LEADER_ID: nodes[0].node_id, LEADER_HOST: nodes[0].host, LEADER_PORT: nodes[0].port}), ('192.168.56.255', 37021))
+            else:
+                _, current_sock_port = client.getsockname()
+                current_sock_host = socket.gethostbyname(socket.gethostname())
+                id = address_mapping[(current_sock_host, current_sock_port)]
+                node = nodes[id]
+                threading.Thread(target=node.start_election, args=(nodes,), daemon=True).start()
             election_begin_time = time.time()
             threading.Thread(target=listen_for_leader, daemon=True).start()
             threading.Thread(target=leader_elected, daemon=True).start()
@@ -155,7 +164,7 @@ while True:
                 message = {OK_MESSAGE: 'ok', 'responding_node': data_received['target_node'], 'initiating_node': data_received['initiating_node']}
                 client.sendto(pickle.dumps(message), (data_received['initiating_node'].host, data_received['initiating_node'].port))
             else:
-                print(f"Node {data_received['target_node']} ignores the election message from Node {data_received['initiating_node']}.")
+                print(f"Node {data_received['target_node'].node_id} ignores the election message from Node {data_received['initiating_node'].node_id}.")
         
         if type(data_received) == dict and OK_MESSAGE in data_received.keys():
             ok_count += 1
