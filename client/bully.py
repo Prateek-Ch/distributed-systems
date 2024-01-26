@@ -21,19 +21,18 @@ class Node:
         self.client = client
 
     def start_election(self, nodes):
-        print(f"{self.node_id} initiates an election.")
         higher_nodes = [node for node in nodes if node.node_id > self.node_id]
         for higher_node in higher_nodes:
             election_message = {ELECTION_REQUEST: True, 'initiating_node': self, 'target_node': higher_node}
             self.send_message(higher_node, election_message)
 
     def send_message(self, target_node, message):
-        print(f"{self.node_id} sends message to Node {target_node.node_id}.")
         try:
             client = message['initiating_node'].client
             message['initiating_node'].client = None
             message['target_node'].client = None
-            client.sendto(pickle.dumps(message), (target_node.host, target_node.port))
+            if client:
+                client.sendto(pickle.dumps(message), (target_node.host, target_node.port))
         except socket.error as e:
             print(f"Error sending message to ({target_node.host}:{target_node.port}): {e}")
 

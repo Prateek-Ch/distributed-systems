@@ -149,19 +149,18 @@ while True:
     if data != None:
         data_received = pickle.loads(data)
         if type(data_received) == dict and ELECTION_REQUEST in data_received.keys():
-            print(f"{data_received['target_node'].node_id} receives an election message from {data_received['initiating_node'].node_id}.")
-            print(leader)
+            print(f"Node {data_received['target_node'].node_id} receives an election message from Node {data_received['initiating_node'].node_id}.")
             if leader is None or data_received['target_node'].node_id > leader.node_id:
-                print(f"{data_received['target_node'].node_id} sends an OK message to {data_received['initiating_node'].node_id}.")
+                print(f"Node {data_received['target_node'].node_id} sends an OK message to Node {data_received['initiating_node'].node_id}.")
                 message = {OK_MESSAGE: 'ok', 'responding_node': data_received['target_node'], 'initiating_node': data_received['initiating_node']}
                 client.sendto(pickle.dumps(message), (data_received['initiating_node'].host, data_received['initiating_node'].port))
             else:
-                print(f"{data_received['target_node']} ignores the election message from {data_received['initiating_node']}.")
+                print(f"Node {data_received['target_node']} ignores the election message from Node {data_received['initiating_node']}.")
         
         if type(data_received) == dict and OK_MESSAGE in data_received.keys():
             ok_count += 1
             leader = data_received['responding_node']
-            print(f"{data_received['initiating_node'].node_id} acknowledges {data_received['responding_node'].node_id} as the leader.")    
+            print(f"Node {data_received['initiating_node'].node_id} acknowledges Node {data_received['responding_node'].node_id} as the leader.")    
         
         if type(data_received) == dict and 'data' in data_received.keys():
             words = data_received['data'].split()
