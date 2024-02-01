@@ -1,4 +1,4 @@
-import socket, threading, pickle, time, uuid, queue
+import socket, threading, pickle, time, uuid, queue, signal, sys
 from helper import create_segments
 
 HOST = socket.gethostbyname(socket.gethostname())
@@ -22,6 +22,8 @@ send_queue = queue.Queue()
 resend_queue = queue.Queue()
 id_to_address = {}
 
+exit_flag_event = threading.Event()
+
 # locks for race conditions
 addresses_lock = threading.Lock()
 last_heartbeat_lock = threading.Lock()
@@ -31,9 +33,19 @@ resend_queue_lock = threading.Lock()
 task_distributed_lock = threading.Lock()
 id_to_address_lock = threading.Lock()
 
+def signal_handler(sig, frame):
+    exit_flag_event.set()
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 def distribute_tasks():
     global task_distributed
     while True:
+        if exit_flag_event.is_set():
+            if server:
+                server.close()
+            break
         time.sleep(25)
         with send_queue_lock and resend_queue_lock:
             if not send_queue.empty() and resend_queue.empty():
@@ -52,6 +64,8 @@ def distribute_tasks():
 def handle_input():
     global task_distributed
     while True:
+        if exit_flag_event.is_set():
+            break
         if len(addresses) > 0 and not task_distributed:
             data = input("Input Paragraph ")
             with send_queue_lock:
@@ -62,6 +76,8 @@ def calculate_result():
     # TODO: make this logic better
     global task_distributed
     while True:
+        if exit_flag_event.is_set():
+            break
         time.sleep(2)
         ids_in_segments = set(d1['id'] for d1 in segments_with_ids)
         ids_in_results = set(d2['id'] for d2 in results)
@@ -93,11 +109,16 @@ def calculate_result():
 
 def dynamic_host_discovery_and_heartbeats():
     global addresses, last_heartbeat
+    broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     while True:
-        broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if exit_flag_event.is_set():
+            if server:
+                server.close()
+            broadcast_socket.close()
+            break
         print("sending broadcast for heartbeat and dhd")
         with addresses_lock, last_heartbeat_lock:
-            broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT}), ('192.168.1.255', 37020))
+            broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT, 'ADDRESSES': addresses}), ('192.168.56.255', 37020))
             
             # heartbeat
             time.sleep(HEARTBEAT_INTERVAL)
@@ -114,6 +135,10 @@ def dynamic_host_discovery_and_heartbeats():
 def resend_segments():
     global task_distributed
     while True:
+        if exit_flag_event.is_set():
+            if server:
+                server.close()
+            break
         time.sleep(6)
         if task_distributed and not resend_queue.empty():
             with resend_queue_lock:
@@ -143,6 +168,13 @@ def start():
     distribute_tasks_thread.start()
     
     while True:
+        if exit_flag_event.is_set():
+            discovery_heartbeat_thread.join()
+            input_thread.join()
+            results_thread.join()
+            resend_thread.join()
+            distribute_tasks_thread.join()
+            break
         try:
             data, address = server.recvfrom(1024)
             # Process the received data
@@ -161,5 +193,13 @@ def start():
             with results_lock:   
                 results.append({'id': message['id'], 'ngram': int(message['ngram'])})
                 server.sendto(pickle.dumps(RESULT_ACK), address)
-print("Server is starting...")
-start()
+
+if __name__ == "__main__":
+    print("Server is starting...")
+    start()
+
+    # graceful shutdown
+    if server:
+        server.close()
+    print("graceful shutdown")
+    sys.exit()
