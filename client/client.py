@@ -32,7 +32,7 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 def dynamic_host_discovery():
-    global host, port, client_addresses, nodes
+    global host, port, client_addresses, nodes, client
     print("waiting for server..")
     discovery_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     discovery_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -53,13 +53,14 @@ def dynamic_host_discovery():
             host = message['HOST']
             port = message['PORT']
             client_addresses = message['ADDRESSES']
-            nodes = []
+            temp = []
             for i in range(len(client_addresses)):
                 chost, cport = client_addresses[i]
                 address_mapping[(chost, cport)] = i
                 node = Node(i, chost, cport, client)
-                if node not in nodes:
-                    nodes.append(node)
+                if node not in temp:
+                    temp.append(node)
+            nodes = temp
             last_heartbeat["server"] = time.time()
             server_available_event.set()
 
@@ -78,7 +79,7 @@ def listen_for_leader():
         if  LEADER_ID in message.keys():
             print(f"Client {message[LEADER_ID]} is elected as the leader.")
             _, current_sock_port = client.getsockname()
-            current_sock_host = socket.gethostbyname(socket.gethostname())
+            current_sock_host = '192.168.147.209'
             if current_sock_host == message[LEADER_HOST] and current_sock_port == message[LEADER_PORT] and current_sock_host == message[LEADER_HOST]:
                 last_heartbeat["server"] = time.time()
                 print("Leader elected. Performing leader tasks...")
@@ -114,15 +115,15 @@ def leader_elected():
         election_elapsed_time = time.time() - election_begin_time
         if leader is None and election_elapsed_time > 7 and ok_count == 0:
             _, current_sock_port = client.getsockname()
-            current_sock_host = socket.gethostbyname(socket.gethostname())
+            current_sock_host = '192.168.147.209'
             leader_id = address_mapping[(current_sock_host, current_sock_port)]
             broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            broadcast_socket.sendto(pickle.dumps({LEADER_ID: leader_id, LEADER_HOST: current_sock_host, LEADER_PORT: current_sock_port}), ('192.168.56.255', 37021))
+            broadcast_socket.sendto(pickle.dumps({LEADER_ID: leader_id, LEADER_HOST: current_sock_host, LEADER_PORT: current_sock_port}), ('192.168.147.255', 37021))
             break
 
 # check server heartbeat
 def server_heartbeat():
-    global leader, election_begin_time, ok_count
+    global leader, election_begin_time, ok_count, nodes
     while True:
         if exit_flag_event.is_set():
             break
@@ -134,10 +135,10 @@ def server_heartbeat():
             ok_count = 0
             if len(nodes) == 1:
                 broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                broadcast_socket.sendto(pickle.dumps({LEADER_ID: nodes[0].node_id, LEADER_HOST: nodes[0].host, LEADER_PORT: nodes[0].port}), ('192.168.56.255', 37021))
+                broadcast_socket.sendto(pickle.dumps({LEADER_ID: nodes[0].node_id, LEADER_HOST: nodes[0].host, LEADER_PORT: nodes[0].port}), ('192.168.147.255', 37021))
             else:
                 _, current_sock_port = client.getsockname()
-                current_sock_host = socket.gethostbyname(socket.gethostname())
+                current_sock_host = '192.168.147.209'
                 id = address_mapping[(current_sock_host, current_sock_port)]
                 node = nodes[id]
                 threading.Thread(target=node.start_election, args=(nodes,), daemon=True).start()

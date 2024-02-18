@@ -1,6 +1,5 @@
 import socket
 import pickle
-import threading
 
 LEADER_ID = 'leader_id'
 LEADER_HOST = 'leader_host'
@@ -28,9 +27,10 @@ class Node:
 
     def send_message(self, higher_node, message):
         try:
+            temp =  message['initiating_node'].client
             message['initiating_node'].client = None
             message['target_node'].client = None
-            if self.client:
-                self.client.sendto(pickle.dumps(message), (higher_node.host, higher_node.port))
+            if temp:
+                temp.sendto(pickle.dumps(message), (higher_node.host, higher_node.port))
         except socket.error as e:
             print(f"Error sending message to ({higher_node.host}:{higher_node.port}): {e}")

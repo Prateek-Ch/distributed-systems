@@ -1,7 +1,8 @@
 import socket, threading, pickle, time, uuid, queue, signal, sys
 from helper import create_segments
 
-HOST = socket.gethostbyname(socket.gethostname())
+# HOST = socket.gethostbyname(socket.gethostname())
+HOST = '192.168.147.209'
 PORT = 9090
 AVAILABLE = 'available'
 ACK = 'ack'
@@ -118,7 +119,7 @@ def dynamic_host_discovery_and_heartbeats():
             break
         print("sending broadcast for heartbeat and dhd")
         with addresses_lock, last_heartbeat_lock:
-            broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT, 'ADDRESSES': addresses}), ('192.168.56.255', 37020))
+            broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT, 'ADDRESSES': addresses}), ('192.168.147.255', 37020))
             
             # heartbeat
             time.sleep(HEARTBEAT_INTERVAL)
