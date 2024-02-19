@@ -1,5 +1,6 @@
 import socket, pickle, threading, time, queue, signal, sys, os
 from bully import Node, LEADER_ID, LEADER_HOST, LEADER_PORT, ELECTION_REQUEST, OK_MESSAGE
+from processing import input_batch
 host = ''
 port = 0
 AVAILABLE = 'available'
@@ -79,7 +80,7 @@ def listen_for_leader():
         if  LEADER_ID in message.keys():
             print(f"Client {message[LEADER_ID]} is elected as the leader.")
             _, current_sock_port = client.getsockname()
-            current_sock_host = '192.168.147.209'
+            current_sock_host = '192.168.0.101'
             if current_sock_host == message[LEADER_HOST] and current_sock_port == message[LEADER_PORT] and current_sock_host == message[LEADER_HOST]:
                 last_heartbeat["server"] = time.time()
                 print("Leader elected. Performing leader tasks...")
@@ -115,10 +116,10 @@ def leader_elected():
         election_elapsed_time = time.time() - election_begin_time
         if leader is None and election_elapsed_time > 7 and ok_count == 0:
             _, current_sock_port = client.getsockname()
-            current_sock_host = '192.168.147.209'
+            current_sock_host = '192.168.0.101'
             leader_id = address_mapping[(current_sock_host, current_sock_port)]
             broadcast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            broadcast_socket.sendto(pickle.dumps({LEADER_ID: leader_id, LEADER_HOST: current_sock_host, LEADER_PORT: current_sock_port}), ('192.168.147.255', 37021))
+            broadcast_socket.sendto(pickle.dumps({LEADER_ID: leader_id, LEADER_HOST: current_sock_host, LEADER_PORT: current_sock_port}), ('192.168.0.101', 37021))
             break
 
 # check server heartbeat
@@ -138,7 +139,7 @@ def server_heartbeat():
                 broadcast_socket.sendto(pickle.dumps({LEADER_ID: nodes[0].node_id, LEADER_HOST: nodes[0].host, LEADER_PORT: nodes[0].port}), ('192.168.147.255', 37021))
             else:
                 _, current_sock_port = client.getsockname()
-                current_sock_host = '192.168.147.209'
+                current_sock_host = '192.168.0.101'
                 id = address_mapping[(current_sock_host, current_sock_port)]
                 node = nodes[id]
                 threading.Thread(target=node.start_election, args=(nodes,), daemon=True).start()
@@ -173,11 +174,20 @@ while True:
             print(f"Node {data_received['initiating_node'].node_id} acknowledges Node {data_received['responding_node'].node_id} as the leader.")    
         
         if type(data_received) == dict and 'data' in data_received.keys():
-            words = data_received['data'].split()
-            result_dict = {'id': data_received['id'], 'ngram': len(words)}
+            # words = data_received['data'].split()
+            # result_dict = {'id': data_received['id'], 'ngram': len(words)}
+            # with send_queue_lock:
+            #     print(f"Queueing: {result_dict}")
+            #     send_queue.put(result_dict)
+
+            paras = data_received['data']
+            n_grams = input_batch(paras, 3)
+            print(f"Ngrams {n_grams}")
+            result_dict = {'id': data_received['id'], 'ngram': n_grams, 'ngram_count': len(n_grams)}
             with send_queue_lock:
                 print(f"Queueing: {result_dict}")
                 send_queue.put(result_dict)
+
         # dequeue first element
         if data_received == RESULT_ACK:
             with send_queue_lock:

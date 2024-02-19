@@ -2,7 +2,7 @@ import socket, threading, pickle, time, uuid, queue, signal, sys
 from helper import create_segments
 
 # HOST = socket.gethostbyname(socket.gethostname())
-HOST = '192.168.147.209'
+HOST = '192.168.0.101'
 PORT = 9090
 AVAILABLE = 'available'
 ACK = 'ack'
@@ -87,8 +87,14 @@ def calculate_result():
         with task_distributed_lock:
             if task_distributed and all_keys_match and len(results) > 0:
                 with results_lock:
-                    result = sum(entry['ngram'] for entry in results)
-                    print(f"Final result: {result}")
+                    #result = sum(entry['ngram_count'] for entry in results)
+                    combined_ngrams = []
+                    ngram_sum = 0
+                    for entry in results:
+                        combined_ngrams.extend(entry['ngram'])
+                        ngram_sum += entry['ngram_count']
+                    print(f"Final Result: {combined_ngrams}")
+                    print(f"Final Count: {ngram_sum}")
                     with send_queue_lock:
                         print(f"Dequeing results: {send_queue.queue[0]}")
                         send_queue.get()
@@ -119,7 +125,7 @@ def dynamic_host_discovery_and_heartbeats():
             break
         print("sending broadcast for heartbeat and dhd")
         with addresses_lock, last_heartbeat_lock:
-            broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT, 'ADDRESSES': addresses}), ('192.168.147.255', 37020))
+            broadcast_socket.sendto(pickle.dumps({'HOST': HOST, 'PORT': PORT, 'ADDRESSES': addresses}), ('192.168.0.101', 37020))
             
             # heartbeat
             time.sleep(HEARTBEAT_INTERVAL)
@@ -192,7 +198,7 @@ def start():
         elif type(message) == dict and 'ngram' in message.keys():
             print(f"Message from {address}: {message}")
             with results_lock:   
-                results.append({'id': message['id'], 'ngram': int(message['ngram'])})
+                results.append({'id': message['id'], 'ngram': message['ngram'], 'ngram_count': message['ngram_count']})
                 server.sendto(pickle.dumps(RESULT_ACK), address)
 
 if __name__ == "__main__":
